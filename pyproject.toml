@@ -1,7 +1,7 @@
 [project]
 name = "datasette-showboat"
 version = "0.1"
-description = "Datasette plugin for SHOWBOAT_REMOTE"
+description = "Datasette plugin for SHOWBOAT_REMOTE_URL"
 readme = "README.md"
 authors = [{name = "Simon Willison"}]
 license = "Apache-2.0"
