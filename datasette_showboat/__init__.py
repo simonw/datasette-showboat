@@ -2,7 +2,6 @@ from datasette import hookimpl, Response
 from datasette.permissions import Action, PermissionSQL
 import base64
 import datetime
-import html as html_module
 
 
 def get_db(datasette):
@@ -209,158 +208,18 @@ async def showboat_document_json(request, datasette):
     return Response.json({"chunks": chunks})
 
 
-DOCUMENT_VIEWER_HTML = """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Showboat Document</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
-            color: #1f2328;
-        }
-        .chunk { margin-bottom: 0.5em; }
-        .chunk-timestamp {
-            font-size: 0.7em;
-            color: #999;
-            margin-bottom: 0.5em;
-        }
-        .chunk-content img { max-width: 100%; }
-        pre {
-            background: #f6f8fa;
-            padding: 16px;
-            border-radius: 6px;
-            overflow-x: auto;
-        }
-        code {
-            background: #f6f8fa;
-            padding: 0.2em 0.4em;
-            border-radius: 3px;
-            font-size: 85%;
-        }
-        pre code { background: none; padding: 0; }
-        a { color: #0969da; }
-        .nav { margin-bottom: 1em; font-size: 0.9em; }
-    </style>
-</head>
-<body>
-    <div class="nav"><a href="/-/showboat">&larr; All documents</a></div>
-    <div id="chunks"></div>
-    <script>
-    (function() {
-        const uuid = "__UUID__";
-        let lastId = 0;
-        const chunksDiv = document.getElementById("chunks");
-
-        function renderChunk(chunk) {
-            const div = document.createElement("div");
-            div.className = "chunk";
-            div.setAttribute("data-id", chunk.id);
-
-            const content = document.createElement("div");
-            content.className = "chunk-content";
-            let md = chunk.markdown;
-            if (chunk.image) {
-                const dataUri = "data:image/png;base64," + chunk.image;
-                if (md.match(/!\\[[^\\]]*\\]\\(\\)/)) {
-                    md = md.replace(/!\\[([^\\]]*)\\]\\(\\)/, "![$1](" + dataUri + ")");
-                } else {
-                    md += "\\n\\n![image](" + dataUri + ")";
-                }
-            }
-            content.innerHTML = marked.parse(md);
-
-            const ts = document.createElement("div");
-            ts.className = "chunk-timestamp";
-            const date = new Date(chunk.created_at);
-            ts.textContent = date.toLocaleString();
-
-            div.appendChild(content);
-            div.appendChild(ts);
-            chunksDiv.appendChild(div);
-        }
-
-        async function poll() {
-            try {
-                const url = "/-/showboat/" + uuid + ".json" + (lastId ? "?after=" + lastId : "");
-                const response = await fetch(url);
-                if (!response.ok) return;
-                const data = await response.json();
-                if (data.chunks && data.chunks.length > 0) {
-                    data.chunks.forEach(function(chunk) {
-                        renderChunk(chunk);
-                        if (chunk.id > lastId) lastId = chunk.id;
-                    });
-                }
-            } catch (e) {
-                console.error("Poll error:", e);
-            }
-        }
-
-        poll();
-        setInterval(poll, 2000);
-    })();
-    </script>
-</body>
-</html>"""
-
-
 async def showboat_document(request, datasette):
     await datasette.ensure_permission(action="showboat", actor=request.actor)
     uuid = request.url_vars["uuid"]
-    return Response.html(DOCUMENT_VIEWER_HTML.replace("__UUID__", uuid))
-
-
-INDEX_HTML = """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Showboat</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            line-height: 1.6;
-            color: #1f2328;
-        }
-        pre {
-            background: #f6f8fa;
-            padding: 16px;
-            border-radius: 6px;
-            overflow-x: auto;
-        }
-        code {
-            background: #f6f8fa;
-            padding: 0.2em 0.4em;
-            border-radius: 3px;
-        }
-        pre code { background: none; padding: 0; }
-        a { color: #0969da; }
-        ul { padding-left: 1.5em; }
-        .doc-meta { color: #666; font-size: 0.9em; }
-    </style>
-</head>
-<body>
-    <h1>Showboat Documents</h1>
-    <ul>
-    __DOCUMENTS__
-    </ul>
-
-    <h2>Setup</h2>
-    <p>To send showboat output to this server, set the <code>SHOWBOAT_REMOTE_URL</code>
-    environment variable to point to the receive endpoint:</p>
-    <pre><code>export SHOWBOAT_REMOTE_URL="https://your-datasette-instance/-/showboat/receive"</code></pre>
-    <p>If a token is configured, include it as a query parameter:</p>
-    <pre><code>export SHOWBOAT_REMOTE_URL="https://your-datasette-instance/-/showboat/receive?token=your-token"</code></pre>
-</body>
-</html>"""
+    base_url = datasette.urls.path("/")
+    json_url = datasette.urls.path(f"/-/showboat/{uuid}.json")
+    return Response.html(
+        await datasette.render_template(
+            "showboat_document.html",
+            {"uuid": uuid, "base_url": base_url, "json_url": json_url},
+            request=request,
+        )
+    )
 
 
 async def showboat_index(request, datasette):
@@ -379,19 +238,22 @@ async def showboat_index(request, datasette):
         """
     )
 
-    documents_html = ""
+    documents = []
     for row in result.rows:
-        showboat_id = html_module.escape(str(row[0]))
-        chunk_count = row[1]
-        first_chunk = html_module.escape(str(row[2]))
-        last_chunk = html_module.escape(str(row[3]))
-        documents_html += (
-            f'<li><a href="/-/showboat/{showboat_id}">{showboat_id}</a>'
-            f' <span class="doc-meta">- {chunk_count} chunks,'
-            f" started {first_chunk}, last updated {last_chunk}</span></li>\n"
+        documents.append(
+            {
+                "showboat_id": row[0],
+                "chunk_count": row[1],
+                "first_chunk": row[2],
+                "last_chunk": row[3],
+            }
         )
 
-    if not documents_html:
-        documents_html = "<li>No documents yet.</li>"
-
-    return Response.html(INDEX_HTML.replace("__DOCUMENTS__", documents_html))
+    base_url = datasette.urls.path("/")
+    return Response.html(
+        await datasette.render_template(
+            "showboat_index.html",
+            {"documents": documents, "base_url": base_url},
+            request=request,
+        )
+    )
