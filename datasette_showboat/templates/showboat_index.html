@@ -63,7 +63,7 @@
         {% for doc in documents %}
         <li>
             <a href="{{ base_url }}-/showboat/{{ doc.showboat_id }}" class="showboat-doc-title">{{ doc.title or doc.showboat_id }}</a>
-            <span class="showboat-doc-meta">{{ doc.first_chunk[:10] }} &middot; {{ doc.chunk_count }} chunks</span>
+            <span class="showboat-doc-meta">{{ doc.first_chunk[:16].replace("T", " ") }} &middot; {{ doc.chunk_count }} chunks</span>
             {% if doc.title %}
             <br><span class="showboat-doc-uuid">{{ doc.showboat_id }}</span>
             {% endif %}
