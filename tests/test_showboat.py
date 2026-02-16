@@ -139,7 +139,12 @@ async def test_receive_image():
     fake_png = b"\x89PNG\r\n\x1a\nfake image data"
     response = await datasette.client.post(
         "/-/showboat/receive",
-        data={"uuid": "abc-123", "command": "image", "filename": "screenshot.py", "alt": "A screenshot"},
+        data={
+            "uuid": "abc-123",
+            "command": "image",
+            "filename": "screenshot.py",
+            "alt": "A screenshot",
+        },
         files={"image": ("screenshot.png", fake_png, "image/png")},
     )
     assert response.status_code == 201
@@ -305,7 +310,8 @@ async def test_document_json_polling_after():
     )
 
     response = await datasette.client.get(
-        "/-/showboat/doc-1.json", cookies=cookies,
+        "/-/showboat/doc-1.json",
+        cookies=cookies,
     )
     first_id = response.json()["chunks"][0]["id"]
 
@@ -315,7 +321,8 @@ async def test_document_json_polling_after():
     )
 
     response = await datasette.client.get(
-        f"/-/showboat/doc-1.json?after={first_id}", cookies=cookies,
+        f"/-/showboat/doc-1.json?after={first_id}",
+        cookies=cookies,
     )
     data = response.json()
     assert len(data["chunks"]) == 1
@@ -331,7 +338,12 @@ async def test_document_json_with_image():
     fake_png = b"\x89PNG\r\n\x1a\nfake-png-data"
     await datasette.client.post(
         "/-/showboat/receive",
-        data={"uuid": "doc-1", "command": "image", "filename": "shot.py", "alt": "test"},
+        data={
+            "uuid": "doc-1",
+            "command": "image",
+            "filename": "shot.py",
+            "alt": "test",
+        },
         files={"image": ("test.png", fake_png, "image/png")},
     )
 

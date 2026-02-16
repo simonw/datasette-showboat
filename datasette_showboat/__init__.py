@@ -133,8 +133,17 @@ def register_routes():
 
 
 COLUMNS = (
-    "showboat_id", "command", "created_at", "title", "markdown",
-    "language", "input", "output", "filename", "alt", "image",
+    "showboat_id",
+    "command",
+    "created_at",
+    "title",
+    "markdown",
+    "language",
+    "input",
+    "output",
+    "filename",
+    "alt",
+    "image",
 )
 
 INSERT_SQL = f"INSERT INTO showboat_chunks ({', '.join(COLUMNS)}) VALUES ({', '.join('?' for _ in COLUMNS)})"
@@ -164,42 +173,104 @@ async def showboat_receive(request, datasette):
 
     if command == "init":
         title = form.get("title", "Untitled")
-        await db.execute_write(INSERT_SQL, [
-            uuid, "init", created_at, title, None,
-            None, None, None, None, None, None,
-        ])
+        await db.execute_write(
+            INSERT_SQL,
+            [
+                uuid,
+                "init",
+                created_at,
+                title,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
+        )
 
     elif command == "note":
         markdown = form.get("markdown", "")
-        await db.execute_write(INSERT_SQL, [
-            uuid, "note", created_at, None, markdown,
-            None, None, None, None, None, None,
-        ])
+        await db.execute_write(
+            INSERT_SQL,
+            [
+                uuid,
+                "note",
+                created_at,
+                None,
+                markdown,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
+        )
 
     elif command == "exec":
         language = form.get("language", "")
         input_code = form.get("input", "")
         output_text = form.get("output", "")
-        await db.execute_write(INSERT_SQL, [
-            uuid, "exec", created_at, None, None,
-            language, input_code, output_text, None, None, None,
-        ])
+        await db.execute_write(
+            INSERT_SQL,
+            [
+                uuid,
+                "exec",
+                created_at,
+                None,
+                None,
+                language,
+                input_code,
+                output_text,
+                None,
+                None,
+                None,
+            ],
+        )
 
     elif command == "image":
         filename = form.get("filename", "")
         alt_text = form.get("alt", "")
         uploaded = form.get("image")
-        image_data = await uploaded.read() if uploaded and hasattr(uploaded, "read") else None
-        await db.execute_write(INSERT_SQL, [
-            uuid, "image", created_at, None, None,
-            None, None, None, filename, alt_text, image_data,
-        ])
+        image_data = (
+            await uploaded.read() if uploaded and hasattr(uploaded, "read") else None
+        )
+        await db.execute_write(
+            INSERT_SQL,
+            [
+                uuid,
+                "image",
+                created_at,
+                None,
+                None,
+                None,
+                None,
+                None,
+                filename,
+                alt_text,
+                image_data,
+            ],
+        )
 
     elif command == "pop":
-        await db.execute_write(INSERT_SQL, [
-            uuid, "pop", created_at, None, None,
-            None, None, None, None, None, None,
-        ])
+        await db.execute_write(
+            INSERT_SQL,
+            [
+                uuid,
+                "pop",
+                created_at,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
+        )
 
     else:
         return Response.json({"error": f"Unknown command: {command}"}, status=400)
@@ -236,7 +307,15 @@ async def showboat_document_json(request, datasette):
             "created_at": row[3],
         }
         # Include non-null raw fields
-        field_names = ["title", "markdown", "language", "input", "output", "filename", "alt"]
+        field_names = [
+            "title",
+            "markdown",
+            "language",
+            "input",
+            "output",
+            "filename",
+            "alt",
+        ]
         for i, name in enumerate(field_names):
             val = row[4 + i]
             if val is not None:
