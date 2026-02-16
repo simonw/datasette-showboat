@@ -6,7 +6,9 @@
     <script src="{{ base_url }}-/static-plugins/datasette-showboat/marked.min.js"></script>
     <script src="{{ base_url }}-/static-plugins/datasette-showboat/purify.min.js"></script>
     <style>
-        .showboat-back {
+        .showboat-back,
+        .showboat-back:link,
+        .showboat-back:visited {
             display: inline-block;
             margin-top: 0.8em;
             margin-bottom: 1em;
@@ -18,7 +20,9 @@
             text-decoration: none;
             color: #555;
         }
-        .showboat-back:hover { background: #eaeef2; color: #333; }
+        .showboat-back:hover,
+        .showboat-back:focus,
+        .showboat-back:active { background: #eaeef2; color: #333; text-decoration: none; }
         .chunk { margin-bottom: 0.5em; }
         .chunk-timestamp {
             font-size: 0.7em;
@@ -27,9 +31,9 @@
         }
         .chunk-content img { max-width: 100%; }
         .chunk-content pre:has(code.language-output) {
-            border-top: 2px solid #d0d7de;
+            background: #eef1f5;
             margin-top: -0.5em;
-            border-radius: 0 0 6px 6px;
+            padding-top: 1em;
         }
         .chunk-popped {
             opacity: 0.6;
