@@ -336,3 +336,32 @@ async def test_index_page_empty():
     response = await datasette.client.get("/-/showboat")
     assert response.status_code == 200
     assert "No documents yet" in response.text
+
+
+@pytest.mark.asyncio
+async def test_showboat_permission_denied():
+    """When showboat permission is restricted, anonymous users get 403."""
+    datasette = Datasette(
+        memory=True,
+        config={
+            "permissions": {
+                "showboat": {"id": "special-user"},
+            },
+        },
+    )
+    # Anonymous user should be denied
+    response = await datasette.client.get("/-/showboat")
+    assert response.status_code == 403
+
+    response = await datasette.client.get("/-/showboat/abc-123")
+    assert response.status_code == 403
+
+    response = await datasette.client.get("/-/showboat/abc-123.json")
+    assert response.status_code == 403
+
+    # Receive endpoint should still work (no showboat permission check)
+    response = await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "abc-123", "command": "init", "title": "Test"},
+    )
+    assert response.status_code == 201

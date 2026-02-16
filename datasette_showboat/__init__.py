@@ -1,10 +1,8 @@
 from datasette import hookimpl, Response
+from datasette.permissions import Action, PermissionSQL
 import base64
 import datetime
-import email
-import email.policy
 import html as html_module
-import urllib.parse
 
 
 def get_db(datasette):
@@ -33,27 +31,6 @@ def make_fence(content):
     return "`" * max(3, max_run + 1)
 
 
-def parse_multipart_body(content_type, body):
-    """Parse multipart/form-data into (fields_dict, files_dict) using stdlib email."""
-    header = b"MIME-Version: 1.0\r\nContent-Type: " + content_type.encode("latin-1") + b"\r\n\r\n"
-    raw = header + body
-    msg = email.message_from_bytes(raw, policy=email.policy.default)
-    fields = {}
-    files = {}
-    for part in msg.iter_parts():
-        cd = part.get("Content-Disposition", "")
-        if "form-data" not in cd:
-            continue
-        name = part.get_param("name", header="content-disposition")
-        filename = part.get_param("filename", header="content-disposition")
-        if filename:
-            files[name] = part.get_payload(decode=True)
-        else:
-            payload = part.get_payload(decode=True)
-            fields[name] = payload.decode("utf-8") if payload else ""
-    return fields, files
-
-
 @hookimpl
 def startup(datasette):
     async def inner():
@@ -80,8 +57,29 @@ def startup(datasette):
 
 
 @hookimpl
-def skip_csrf(scope):
-    return scope.get("type") == "http" and scope.get("path") == "/-/showboat/receive"
+def skip_csrf(datasette, scope):
+    receive_path = datasette.urls.path("/-/showboat/receive")
+    return scope.get("type") == "http" and scope.get("path") == receive_path
+
+
+@hookimpl
+def register_actions():
+    return [
+        Action(
+            name="showboat",
+            description="View showboat documents",
+        ),
+    ]
+
+
+@hookimpl
+def permission_resources_sql(datasette, actor, action):
+    if action == "showboat":
+        # Only provide default allow if showboat is not explicitly configured
+        config_perms = (datasette.config or {}).get("permissions", {})
+        metadata_perms = (datasette._metadata_local or {}).get("permissions", {})
+        if "showboat" not in config_perms and "showboat" not in metadata_perms:
+            return PermissionSQL.allow("Default allow for showboat")
 
 
 @hookimpl
@@ -108,19 +106,10 @@ async def showboat_receive(request, datasette):
         if provided_token != expected_token:
             return Response.json({"error": "Invalid token"}, status=403)
 
-    # Parse body based on content type
-    body = await request.post_body()
-    content_type = request.headers.get("content-type", "")
-
-    if "multipart/form-data" in content_type:
-        fields, files = parse_multipart_body(content_type, body)
-    else:
-        parsed = urllib.parse.parse_qs(body.decode("utf-8"))
-        fields = {k: v[0] for k, v in parsed.items()}
-        files = {}
-
-    uuid = fields.get("uuid", "")
-    command = fields.get("command", "")
+    # Parse form data (handles both url-encoded and multipart)
+    form = await request.form(files=True)
+    uuid = form.get("uuid", "")
+    command = form.get("command", "")
 
     if not uuid or not command:
         return Response.json({"error": "uuid and command are required"}, status=400)
@@ -129,23 +118,23 @@ async def showboat_receive(request, datasette):
     created_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     if command == "init":
-        title = fields.get("title", "Untitled")
+        title = form.get("title", "Untitled")
         await db.execute_write(
             "INSERT INTO showboat_chunks (showboat_id, created_at, markdown, image) VALUES (?, ?, ?, ?)",
             [uuid, created_at, f"# {title}", None],
         )
 
     elif command == "note":
-        markdown = fields.get("markdown", "")
+        markdown = form.get("markdown", "")
         await db.execute_write(
             "INSERT INTO showboat_chunks (showboat_id, created_at, markdown, image) VALUES (?, ?, ?, ?)",
             [uuid, created_at, markdown, None],
         )
 
     elif command == "exec":
-        language = fields.get("language", "")
-        input_code = fields.get("input", "")
-        output_text = fields.get("output", "")
+        language = form.get("language", "")
+        input_code = form.get("input", "")
+        output_text = form.get("output", "")
         code_fence = make_fence(input_code)
         output_fence = make_fence(output_text)
         markdown = f"{code_fence}{language}\n{input_code}\n{code_fence}\n\n{output_fence}output\n{output_text}\n{output_fence}"
@@ -155,9 +144,10 @@ async def showboat_receive(request, datasette):
         )
 
     elif command == "image":
-        input_text = fields.get("input", "")
-        alt_text = fields.get("alt", "")
-        image_data = files.get("image")
+        input_text = form.get("input", "")
+        alt_text = form.get("alt", "")
+        uploaded = form.get("image")
+        image_data = await uploaded.read() if uploaded and hasattr(uploaded, "read") else None
         fence = make_fence(input_text)
         markdown = f"{fence}bash {{image}}\n{input_text}\n{fence}"
         if alt_text:
@@ -188,6 +178,7 @@ async def showboat_receive(request, datasette):
 
 
 async def showboat_document_json(request, datasette):
+    await datasette.ensure_permission(action="showboat", actor=request.actor)
     uuid = request.url_vars["uuid"]
     db = get_db(datasette)
     after = request.args.get("after")
@@ -320,6 +311,7 @@ DOCUMENT_VIEWER_HTML = """<!DOCTYPE html>
 
 
 async def showboat_document(request, datasette):
+    await datasette.ensure_permission(action="showboat", actor=request.actor)
     uuid = request.url_vars["uuid"]
     return Response.html(DOCUMENT_VIEWER_HTML.replace("__UUID__", uuid))
 
@@ -372,6 +364,7 @@ INDEX_HTML = """<!DOCTYPE html>
 
 
 async def showboat_index(request, datasette):
+    await datasette.ensure_permission(action="showboat", actor=request.actor)
     db = get_db(datasette)
     result = await db.execute(
         """
