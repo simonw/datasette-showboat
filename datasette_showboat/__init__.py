@@ -1,5 +1,5 @@
 from datasette import hookimpl, Response
-from datasette.permissions import Action, PermissionSQL
+from datasette.permissions import Action
 import base64
 import datetime
 
@@ -101,16 +101,6 @@ def register_actions():
             description="View showboat documents",
         ),
     ]
-
-
-@hookimpl
-def permission_resources_sql(datasette, actor, action):
-    if action == "showboat":
-        # Only provide default allow if showboat is not explicitly configured
-        config_perms = (datasette.config or {}).get("permissions", {})
-        metadata_perms = (datasette._metadata_local or {}).get("permissions", {})
-        if "showboat" not in config_perms and "showboat" not in metadata_perms:
-            return PermissionSQL.allow("Default allow for showboat")
 
 
 @hookimpl
@@ -284,8 +274,11 @@ async def showboat_index(request, datasette):
             showboat_id,
             COUNT(*) as chunk_count,
             MIN(created_at) as first_chunk,
-            MAX(created_at) as last_chunk
-        FROM showboat_chunks
+            MAX(created_at) as last_chunk,
+            (SELECT title FROM showboat_chunks sc2
+             WHERE sc2.showboat_id = sc.showboat_id AND sc2.command = 'init'
+             LIMIT 1) as title
+        FROM showboat_chunks sc
         WHERE command != 'pop'
         GROUP BY showboat_id
         ORDER BY MAX(created_at) DESC
@@ -300,16 +293,23 @@ async def showboat_index(request, datasette):
                 "chunk_count": row[1],
                 "first_chunk": row[2],
                 "last_chunk": row[3],
+                "title": row[4],
             }
         )
 
     base_url = datasette.urls.path("/")
     receive_path = datasette.urls.path("/-/showboat/receive")
     receive_url = f"{request.scheme}://{request.host}{receive_path}"
+    has_token = bool(get_token(datasette))
     return Response.html(
         await datasette.render_template(
             "showboat_index.html",
-            {"documents": documents, "base_url": base_url, "receive_url": receive_url},
+            {
+                "documents": documents,
+                "base_url": base_url,
+                "receive_url": receive_url,
+                "has_token": has_token,
+            },
             request=request,
         )
     )

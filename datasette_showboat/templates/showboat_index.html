@@ -1,27 +1,92 @@
 {% extends "base.html" %}
 
-{% block title %}Showboat Documents{% endblock %}
+{% block title %}Showboat{% endblock %}
+
+{% block extra_head %}
+<style>
+    .showboat-doc-list { list-style: none; padding: 0; }
+    .showboat-doc-list li {
+        padding: 0.5em 0;
+        border-bottom: 1px solid #eee;
+    }
+    .showboat-doc-list li:last-child { border-bottom: none; }
+    .showboat-doc-title { font-weight: 600; }
+    .showboat-doc-meta {
+        color: #666;
+        font-size: 0.85em;
+        margin-left: 0.3em;
+    }
+    .showboat-doc-uuid {
+        font-family: monospace;
+        font-size: 0.8em;
+        color: #888;
+    }
+    .showboat-setup-box {
+        background: #f6f8fa;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        padding: 1em 1.2em;
+        position: relative;
+        margin: 1em 0;
+    }
+    .showboat-setup-box pre {
+        margin: 0;
+        background: none;
+        border: none;
+        padding: 0;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    .showboat-copy-btn {
+        position: absolute;
+        top: 0.5em;
+        right: 0.5em;
+        background: #fff;
+        border: 1px solid #d0d7de;
+        border-radius: 4px;
+        padding: 0.25em 0.5em;
+        cursor: pointer;
+        font-size: 0.8em;
+        color: #333;
+    }
+    .showboat-copy-btn:hover { background: #f0f0f0; }
+</style>
+{% endblock %}
 
 {% block content %}
-    <h1>Showboat Documents</h1>
-    <ul>
+    <h1>Showboat</h1>
+    <p>Remote viewer for <a href="https://github.com/simonw/showboat">showboat</a> documents.</p>
+
     {% if documents %}
+    <ul class="showboat-doc-list">
         {% for doc in documents %}
         <li>
-            <a href="{{ base_url }}-/showboat/{{ doc.showboat_id }}">{{ doc.showboat_id }}</a>
-            <span class="doc-meta">- {{ doc.chunk_count }} chunks,
-            started {{ doc.first_chunk }}, last updated {{ doc.last_chunk }}</span>
+            <a href="{{ base_url }}-/showboat/{{ doc.showboat_id }}" class="showboat-doc-title">{{ doc.title or doc.showboat_id }}</a>
+            <span class="showboat-doc-meta">{{ doc.first_chunk[:10] }} &middot; {{ doc.chunk_count }} chunks</span>
+            {% if doc.title %}
+            <br><span class="showboat-doc-uuid">{{ doc.showboat_id }}</span>
+            {% endif %}
         </li>
         {% endfor %}
-    {% else %}
-        <li>No documents yet.</li>
-    {% endif %}
     </ul>
+    {% else %}
+    <p>No documents yet.</p>
+    {% endif %}
 
     <h2>Setup</h2>
     <p>To send showboat output to this server, set the <code>SHOWBOAT_REMOTE_URL</code>
-    environment variable to point to the receive endpoint:</p>
-    <pre><code>export SHOWBOAT_REMOTE_URL="{{ receive_url }}"</code></pre>
-    <p>If a token is configured, include it as a query parameter:</p>
-    <pre><code>export SHOWBOAT_REMOTE_URL="{{ receive_url }}?token=your-token"</code></pre>
+    environment variable:</p>
+    {% if has_token %}
+    <div class="showboat-setup-box">
+        <button class="showboat-copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.textContent.trim())">Copy</button>
+        <pre><code>export SHOWBOAT_REMOTE_URL="{{ receive_url }}?token=your-token"</code></pre>
+    </div>
+    <p>Replace <code>your-token</code> with the configured token.</p>
+    {% else %}
+    <div class="showboat-setup-box">
+        <button class="showboat-copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.textContent.trim())">Copy</button>
+        <pre><code>export SHOWBOAT_REMOTE_URL="{{ receive_url }}"</code></pre>
+    </div>
+    {% endif %}
 {% endblock %}

@@ -6,6 +6,19 @@
     <script src="{{ base_url }}-/static-plugins/datasette-showboat/marked.min.js"></script>
     <script src="{{ base_url }}-/static-plugins/datasette-showboat/purify.min.js"></script>
     <style>
+        .showboat-back {
+            display: inline-block;
+            margin-top: 0.8em;
+            margin-bottom: 1em;
+            padding: 0.3em 0.8em;
+            font-size: 0.85em;
+            background: #f6f8fa;
+            border: 1px solid #d0d7de;
+            border-radius: 2em;
+            text-decoration: none;
+            color: #333;
+        }
+        .showboat-back:hover { background: #eaeef2; }
         .chunk { margin-bottom: 0.5em; }
         .chunk-timestamp {
             font-size: 0.7em;
@@ -26,7 +39,7 @@
 {% endblock %}
 
 {% block content %}
-    <p><a href="{{ base_url }}-/showboat">&larr; All documents</a></p>
+    <a href="{{ base_url }}-/showboat" class="showboat-back">&larr; All documents</a>
     <div id="chunks"></div>
     <script>
     (function() {

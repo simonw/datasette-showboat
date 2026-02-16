@@ -2,6 +2,10 @@ from datasette.app import Datasette
 import pytest
 
 
+def _root_cookies(datasette):
+    return {"ds_actor": datasette.client.actor_cookie({"id": "root"})}
+
+
 @pytest.mark.asyncio
 async def test_plugin_is_installed():
     datasette = Datasette(memory=True)
@@ -98,6 +102,7 @@ async def test_receive_exec():
 async def test_receive_exec_with_backticks():
     """Exec where the code/output contains backticks should use longer fences in rendered markdown."""
     datasette = Datasette(memory=True)
+    datasette.root_enabled = True
     response = await datasette.client.post(
         "/-/showboat/receive",
         data={
@@ -120,7 +125,10 @@ async def test_receive_exec_with_backticks():
     assert result.rows[0][1] == "```"
 
     # Verify rendered markdown uses longer fences
-    response = await datasette.client.get("/-/showboat/abc-123.json")
+    response = await datasette.client.get(
+        "/-/showboat/abc-123.json",
+        cookies=_root_cookies(datasette),
+    )
     chunk = response.json()["chunks"][0]
     assert "````" in chunk["rendered_markdown"]
 
@@ -257,6 +265,7 @@ async def test_token_auth():
 @pytest.mark.asyncio
 async def test_document_json():
     datasette = Datasette(memory=True)
+    datasette.root_enabled = True
     await datasette.client.post(
         "/-/showboat/receive",
         data={"uuid": "doc-1", "command": "init", "title": "Title"},
@@ -266,7 +275,10 @@ async def test_document_json():
         data={"uuid": "doc-1", "command": "note", "markdown": "Hello world"},
     )
 
-    response = await datasette.client.get("/-/showboat/doc-1.json")
+    response = await datasette.client.get(
+        "/-/showboat/doc-1.json",
+        cookies=_root_cookies(datasette),
+    )
     assert response.status_code == 200
     data = response.json()
     assert len(data["chunks"]) == 2
@@ -285,12 +297,16 @@ async def test_document_json():
 @pytest.mark.asyncio
 async def test_document_json_polling_after():
     datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    cookies = _root_cookies(datasette)
     await datasette.client.post(
         "/-/showboat/receive",
         data={"uuid": "doc-1", "command": "init", "title": "Title"},
     )
 
-    response = await datasette.client.get("/-/showboat/doc-1.json")
+    response = await datasette.client.get(
+        "/-/showboat/doc-1.json", cookies=cookies,
+    )
     first_id = response.json()["chunks"][0]["id"]
 
     await datasette.client.post(
@@ -298,7 +314,9 @@ async def test_document_json_polling_after():
         data={"uuid": "doc-1", "command": "note", "markdown": "Second chunk"},
     )
 
-    response = await datasette.client.get(f"/-/showboat/doc-1.json?after={first_id}")
+    response = await datasette.client.get(
+        f"/-/showboat/doc-1.json?after={first_id}", cookies=cookies,
+    )
     data = response.json()
     assert len(data["chunks"]) == 1
     assert data["chunks"][0]["markdown"] == "Second chunk"
@@ -307,6 +325,7 @@ async def test_document_json_polling_after():
 @pytest.mark.asyncio
 async def test_document_json_with_image():
     datasette = Datasette(memory=True)
+    datasette.root_enabled = True
     import base64
 
     fake_png = b"\x89PNG\r\n\x1a\nfake-png-data"
@@ -316,7 +335,10 @@ async def test_document_json_with_image():
         files={"image": ("test.png", fake_png, "image/png")},
     )
 
-    response = await datasette.client.get("/-/showboat/doc-1.json")
+    response = await datasette.client.get(
+        "/-/showboat/doc-1.json",
+        cookies=_root_cookies(datasette),
+    )
     data = response.json()
     assert len(data["chunks"]) == 1
     chunk = data["chunks"][0]
@@ -332,6 +354,7 @@ async def test_document_json_with_image():
 async def test_document_json_pop_included():
     """Pop commands should be included in JSON response."""
     datasette = Datasette(memory=True)
+    datasette.root_enabled = True
     await datasette.client.post(
         "/-/showboat/receive",
         data={"uuid": "doc-1", "command": "init", "title": "Title"},
@@ -345,7 +368,10 @@ async def test_document_json_pop_included():
         data={"uuid": "doc-1", "command": "pop"},
     )
 
-    response = await datasette.client.get("/-/showboat/doc-1.json")
+    response = await datasette.client.get(
+        "/-/showboat/doc-1.json",
+        cookies=_root_cookies(datasette),
+    )
     data = response.json()
     assert len(data["chunks"]) == 3
     assert data["chunks"][0]["command"] == "init"
@@ -358,7 +384,11 @@ async def test_document_json_pop_included():
 @pytest.mark.asyncio
 async def test_document_viewer_page():
     datasette = Datasette(memory=True)
-    response = await datasette.client.get("/-/showboat/abc-def-123")
+    datasette.root_enabled = True
+    response = await datasette.client.get(
+        "/-/showboat/abc-def-123",
+        cookies=_root_cookies(datasette),
+    )
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "abc-def-123" in response.text
@@ -369,6 +399,8 @@ async def test_document_viewer_page():
 @pytest.mark.asyncio
 async def test_index_page():
     datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    cookies = _root_cookies(datasette)
     await datasette.client.post(
         "/-/showboat/receive",
         data={"uuid": "doc-1", "command": "init", "title": "First Doc"},
@@ -378,35 +410,50 @@ async def test_index_page():
         data={"uuid": "doc-2", "command": "init", "title": "Second Doc"},
     )
 
-    response = await datasette.client.get("/-/showboat")
+    response = await datasette.client.get("/-/showboat", cookies=cookies)
     assert response.status_code == 200
-    assert "doc-1" in response.text
-    assert "doc-2" in response.text
+    # Should show document titles
+    assert "First Doc" in response.text
+    assert "Second Doc" in response.text
     assert "SHOWBOAT_REMOTE_URL" in response.text
     # Should include the actual hostname in the setup URL
     assert "://localhost/-/showboat/receive" in response.text
+    # Should not show token instructions when no token configured
+    assert "?token=" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_index_page_with_token():
+    """When a token is configured, the setup instructions should include it."""
+    datasette = Datasette(
+        memory=True,
+        metadata={"plugins": {"datasette-showboat": {"token": "secret123"}}},
+    )
+    datasette.root_enabled = True
+    response = await datasette.client.get(
+        "/-/showboat",
+        cookies=_root_cookies(datasette),
+    )
+    assert response.status_code == 200
+    assert "?token=" in response.text
 
 
 @pytest.mark.asyncio
 async def test_index_page_empty():
     datasette = Datasette(memory=True)
-    response = await datasette.client.get("/-/showboat")
+    datasette.root_enabled = True
+    response = await datasette.client.get(
+        "/-/showboat",
+        cookies=_root_cookies(datasette),
+    )
     assert response.status_code == 200
     assert "No documents yet" in response.text
 
 
 @pytest.mark.asyncio
-async def test_showboat_permission_denied():
-    """When showboat permission is restricted, anonymous users get 403."""
-    datasette = Datasette(
-        memory=True,
-        config={
-            "permissions": {
-                "showboat": {"id": "special-user"},
-            },
-        },
-    )
-    # Anonymous user should be denied
+async def test_anonymous_denied_by_default():
+    """Anonymous users should be denied access to showboat pages by default."""
+    datasette = Datasette(memory=True)
     response = await datasette.client.get("/-/showboat")
     assert response.status_code == 403
 
@@ -416,7 +463,27 @@ async def test_showboat_permission_denied():
     response = await datasette.client.get("/-/showboat/abc-123.json")
     assert response.status_code == 403
 
-    # Receive endpoint should still work (no showboat permission check)
+
+@pytest.mark.asyncio
+async def test_showboat_permission_granted():
+    """Users explicitly granted showboat permission can access pages."""
+    datasette = Datasette(
+        memory=True,
+        config={
+            "permissions": {
+                "showboat": {"id": "viewer"},
+            },
+        },
+    )
+    cookies = {"ds_actor": datasette.client.actor_cookie({"id": "viewer"})}
+    response = await datasette.client.get("/-/showboat", cookies=cookies)
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_receive_still_works_anonymous():
+    """Receive endpoint has no showboat permission check, so it always works."""
+    datasette = Datasette(memory=True)
     response = await datasette.client.post(
         "/-/showboat/receive",
         data={"uuid": "abc-123", "command": "init", "title": "Test"},
@@ -425,13 +492,10 @@ async def test_showboat_permission_denied():
 
 
 @pytest.mark.asyncio
-async def test_menu_links_shown_by_default():
-    """Menu links should include Showboat when no permission restrictions."""
+async def test_menu_links_shown_for_root():
+    """Menu links should include Showboat for root user."""
     datasette = Datasette(memory=True)
-    # The index page or any page should work - let's check via the JSON plugins endpoint
-    # Actually, let's just check a page that would include the nav
-    response = await datasette.client.get("/-/showboat")
-    assert response.status_code == 200
+    datasette.root_enabled = True
     # Verify the menu_links hook is registered by checking the plugin
     response = await datasette.client.get("/-/plugins.json")
     hooks = None
@@ -443,16 +507,9 @@ async def test_menu_links_shown_by_default():
 
 
 @pytest.mark.asyncio
-async def test_menu_links_hidden_when_denied():
-    """Menu links should not include Showboat when permission is denied."""
-    datasette = Datasette(
-        memory=True,
-        config={
-            "permissions": {
-                "showboat": {"id": "special-user"},
-            },
-        },
-    )
+async def test_menu_links_hidden_for_anonymous():
+    """Menu links should not include Showboat for anonymous users."""
+    datasette = Datasette(memory=True)
     # Get a page that renders menu links - use the root page
     response = await datasette.client.get("/")
     assert response.status_code == 200
