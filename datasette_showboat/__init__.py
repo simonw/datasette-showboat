@@ -2,6 +2,7 @@ from datasette import hookimpl, Response
 from datasette.permissions import Action
 import base64
 import datetime
+import secrets
 
 
 def get_db(datasette):
@@ -146,8 +147,8 @@ async def showboat_receive(request, datasette):
     # Token authentication
     expected_token = get_token(datasette)
     if expected_token:
-        provided_token = request.args.get("token")
-        if provided_token != expected_token:
+        provided_token = request.args.get("token") or ""
+        if not secrets.compare_digest(provided_token, expected_token):
             return Response.json({"error": "Invalid token"}, status=403)
 
     # Parse form data (handles both url-encoded and multipart)
