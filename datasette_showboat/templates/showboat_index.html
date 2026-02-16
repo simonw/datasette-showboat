@@ -22,11 +22,13 @@
         color: #888;
     }
     .showboat-setup-box {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6em;
         background: #f6f8fa;
         border: 1px solid #d0d7de;
         border-radius: 6px;
-        padding: 1em 1.2em;
-        position: relative;
+        padding: 0.6em 1em;
         margin: 1em 0;
     }
     .showboat-setup-box pre {
@@ -34,14 +36,8 @@
         background: none;
         border: none;
         padding: 0;
-        overflow-x: auto;
-        white-space: pre-wrap;
-        word-break: break-all;
     }
     .showboat-copy-btn {
-        position: absolute;
-        top: 0.5em;
-        right: 0.5em;
         background: #fff;
         border: 1px solid #d0d7de;
         border-radius: 4px;
@@ -49,6 +45,7 @@
         cursor: pointer;
         font-size: 0.8em;
         color: #333;
+        white-space: nowrap;
     }
     .showboat-copy-btn:hover { background: #f0f0f0; }
 </style>
@@ -79,14 +76,14 @@
     environment variable:</p>
     {% if has_token %}
     <div class="showboat-setup-box">
-        <button class="showboat-copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.textContent.trim())">Copy</button>
         <pre><code>export SHOWBOAT_REMOTE_URL="{{ receive_url }}?token=your-token"</code></pre>
+        <button class="showboat-copy-btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim());var b=this;b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},1500)">Copy</button>
     </div>
     <p>Replace <code>your-token</code> with the configured token.</p>
     {% else %}
     <div class="showboat-setup-box">
-        <button class="showboat-copy-btn" onclick="navigator.clipboard.writeText(this.nextElementSibling.textContent.trim())">Copy</button>
         <pre><code>export SHOWBOAT_REMOTE_URL="{{ receive_url }}"</code></pre>
+        <button class="showboat-copy-btn" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim());var b=this;b.textContent='Copied!';setTimeout(function(){b.textContent='Copy'},1500)">Copy</button>
     </div>
     {% endif %}
 {% endblock %}
