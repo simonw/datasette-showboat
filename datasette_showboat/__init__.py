@@ -30,6 +30,31 @@ def make_fence(content):
     return "`" * max(3, max_run + 1)
 
 
+def render_markdown(chunk):
+    """Compute markdown from a chunk's raw fields based on its command type."""
+    command = chunk["command"]
+    if command == "init":
+        return f"# {chunk.get('title') or 'Untitled'}"
+    elif command == "note":
+        return chunk.get("markdown") or ""
+    elif command == "exec":
+        language = chunk.get("language") or ""
+        input_code = chunk.get("input") or ""
+        output_text = chunk.get("output") or ""
+        code_fence = make_fence(input_code)
+        output_fence = make_fence(output_text)
+        return f"{code_fence}{language}\n{input_code}\n{code_fence}\n\n{output_fence}output\n{output_text}\n{output_fence}"
+    elif command == "image":
+        filename = chunk.get("filename") or ""
+        alt_text = chunk.get("alt") or ""
+        fence = make_fence(filename)
+        md = f"{fence}bash {{image}}\n{filename}\n{fence}"
+        if alt_text:
+            md += f"\n\n![{alt_text}]()"
+        return md
+    return ""
+
+
 @hookimpl
 def startup(datasette):
     async def inner():
@@ -39,8 +64,15 @@ def startup(datasette):
             CREATE TABLE IF NOT EXISTS showboat_chunks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 showboat_id TEXT NOT NULL,
+                command TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                markdown TEXT NOT NULL,
+                title TEXT,
+                markdown TEXT,
+                language TEXT,
+                input TEXT,
+                output TEXT,
+                filename TEXT,
+                alt TEXT,
                 image BLOB
             )
             """
@@ -82,6 +114,21 @@ def permission_resources_sql(datasette, actor, action):
 
 
 @hookimpl
+def menu_links(datasette, actor):
+    async def inner():
+        if await datasette.allowed(action="showboat", actor=actor):
+            return [
+                {
+                    "href": datasette.urls.path("/-/showboat"),
+                    "label": "Showboat",
+                }
+            ]
+        return []
+
+    return inner
+
+
+@hookimpl
 def register_routes():
     return [
         (r"^/-/showboat/receive$", showboat_receive),
@@ -92,6 +139,14 @@ def register_routes():
 
 
 # --- Route handlers ---
+
+
+COLUMNS = (
+    "showboat_id", "command", "created_at", "title", "markdown",
+    "language", "input", "output", "filename", "alt", "image",
+)
+
+INSERT_SQL = f"INSERT INTO showboat_chunks ({', '.join(COLUMNS)}) VALUES ({', '.join('?' for _ in COLUMNS)})"
 
 
 async def showboat_receive(request, datasette):
@@ -118,62 +173,50 @@ async def showboat_receive(request, datasette):
 
     if command == "init":
         title = form.get("title", "Untitled")
-        await db.execute_write(
-            "INSERT INTO showboat_chunks (showboat_id, created_at, markdown, image) VALUES (?, ?, ?, ?)",
-            [uuid, created_at, f"# {title}", None],
-        )
+        await db.execute_write(INSERT_SQL, [
+            uuid, "init", created_at, title, None,
+            None, None, None, None, None, None,
+        ])
 
     elif command == "note":
         markdown = form.get("markdown", "")
-        await db.execute_write(
-            "INSERT INTO showboat_chunks (showboat_id, created_at, markdown, image) VALUES (?, ?, ?, ?)",
-            [uuid, created_at, markdown, None],
-        )
+        await db.execute_write(INSERT_SQL, [
+            uuid, "note", created_at, None, markdown,
+            None, None, None, None, None, None,
+        ])
 
     elif command == "exec":
         language = form.get("language", "")
         input_code = form.get("input", "")
         output_text = form.get("output", "")
-        code_fence = make_fence(input_code)
-        output_fence = make_fence(output_text)
-        markdown = f"{code_fence}{language}\n{input_code}\n{code_fence}\n\n{output_fence}output\n{output_text}\n{output_fence}"
-        await db.execute_write(
-            "INSERT INTO showboat_chunks (showboat_id, created_at, markdown, image) VALUES (?, ?, ?, ?)",
-            [uuid, created_at, markdown, None],
-        )
+        await db.execute_write(INSERT_SQL, [
+            uuid, "exec", created_at, None, None,
+            language, input_code, output_text, None, None, None,
+        ])
 
     elif command == "image":
-        input_text = form.get("input", "")
+        filename = form.get("filename", "")
         alt_text = form.get("alt", "")
         uploaded = form.get("image")
         image_data = await uploaded.read() if uploaded and hasattr(uploaded, "read") else None
-        fence = make_fence(input_text)
-        markdown = f"{fence}bash {{image}}\n{input_text}\n{fence}"
-        if alt_text:
-            markdown += f"\n\n![{alt_text}]()"
-        await db.execute_write(
-            "INSERT INTO showboat_chunks (showboat_id, created_at, markdown, image) VALUES (?, ?, ?, ?)",
-            [uuid, created_at, markdown, image_data],
-        )
+        await db.execute_write(INSERT_SQL, [
+            uuid, "image", created_at, None, None,
+            None, None, None, filename, alt_text, image_data,
+        ])
 
     elif command == "pop":
-        await db.execute_write(
-            """
-            DELETE FROM showboat_chunks WHERE id = (
-                SELECT id FROM showboat_chunks
-                WHERE showboat_id = ?
-                ORDER BY id DESC
-                LIMIT 1
-            )
-            """,
-            [uuid],
-        )
-        return Response.json({"ok": True}, status=200)
+        await db.execute_write(INSERT_SQL, [
+            uuid, "pop", created_at, None, None,
+            None, None, None, None, None, None,
+        ])
 
     else:
         return Response.json({"error": f"Unknown command: {command}"}, status=400)
 
     return Response.json({"ok": True}, status=201)
+
+
+SELECT_COLUMNS = "id, showboat_id, command, created_at, title, markdown, language, input, output, filename, alt, image"
 
 
 async def showboat_document_json(request, datasette):
@@ -184,12 +227,12 @@ async def showboat_document_json(request, datasette):
 
     if after:
         result = await db.execute(
-            "SELECT id, showboat_id, created_at, markdown, image FROM showboat_chunks WHERE showboat_id = ? AND id > ? ORDER BY id",
+            f"SELECT {SELECT_COLUMNS} FROM showboat_chunks WHERE showboat_id = ? AND id > ? ORDER BY id",
             [uuid, int(after)],
         )
     else:
         result = await db.execute(
-            "SELECT id, showboat_id, created_at, markdown, image FROM showboat_chunks WHERE showboat_id = ? ORDER BY id",
+            f"SELECT {SELECT_COLUMNS} FROM showboat_chunks WHERE showboat_id = ? ORDER BY id",
             [uuid],
         )
 
@@ -198,11 +241,21 @@ async def showboat_document_json(request, datasette):
         chunk = {
             "id": row[0],
             "showboat_id": row[1],
-            "created_at": row[2],
-            "markdown": row[3],
+            "command": row[2],
+            "created_at": row[3],
         }
-        if row[4]:
-            chunk["image"] = base64.b64encode(row[4]).decode("ascii")
+        # Include non-null raw fields
+        field_names = ["title", "markdown", "language", "input", "output", "filename", "alt"]
+        for i, name in enumerate(field_names):
+            val = row[4 + i]
+            if val is not None:
+                chunk[name] = val
+        # Compute markdown for display
+        if chunk["command"] != "pop":
+            chunk["rendered_markdown"] = render_markdown(chunk)
+        # Base64-encode image blob
+        if row[11]:
+            chunk["image"] = base64.b64encode(row[11]).decode("ascii")
         chunks.append(chunk)
 
     return Response.json({"chunks": chunks})
@@ -233,6 +286,7 @@ async def showboat_index(request, datasette):
             MIN(created_at) as first_chunk,
             MAX(created_at) as last_chunk
         FROM showboat_chunks
+        WHERE command != 'pop'
         GROUP BY showboat_id
         ORDER BY MAX(created_at) DESC
         """
