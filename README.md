@@ -5,7 +5,7 @@
 [![Tests](https://github.com/simonw/datasette-showboat/actions/workflows/test.yml/badge.svg)](https://github.com/simonw/datasette-showboat/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette-showboat/blob/main/LICENSE)
 
-Datasette plugin for SHOWBOAT_REMOTE
+Datasette plugin for SHOWBOAT_REMOTE_URL
 
 ## Installation
 
