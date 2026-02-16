@@ -383,6 +383,8 @@ async def test_index_page():
     assert "doc-1" in response.text
     assert "doc-2" in response.text
     assert "SHOWBOAT_REMOTE_URL" in response.text
+    # Should include the actual hostname in the setup URL
+    assert "://localhost/-/showboat/receive" in response.text
 
 
 @pytest.mark.asyncio

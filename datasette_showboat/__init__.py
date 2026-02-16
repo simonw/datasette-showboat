@@ -304,10 +304,12 @@ async def showboat_index(request, datasette):
         )
 
     base_url = datasette.urls.path("/")
+    receive_path = datasette.urls.path("/-/showboat/receive")
+    receive_url = f"{request.scheme}://{request.host}{receive_path}"
     return Response.html(
         await datasette.render_template(
             "showboat_index.html",
-            {"documents": documents, "base_url": base_url},
+            {"documents": documents, "base_url": base_url, "receive_url": receive_url},
             request=request,
         )
     )
