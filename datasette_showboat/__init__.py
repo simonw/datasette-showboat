@@ -336,10 +336,17 @@ async def showboat_document(request, datasette):
     uuid = request.url_vars["uuid"]
     base_url = datasette.urls.path("/")
     json_url = datasette.urls.path(f"/-/showboat/{uuid}.json")
+    db = get_db(datasette)
+    title_result = await db.execute(
+        "SELECT title FROM showboat_chunks WHERE showboat_id = ? AND command = 'init' LIMIT 1",
+        [uuid],
+    )
+    title_row = title_result.first()
+    title = title_row[0] if title_row else None
     return Response.html(
         await datasette.render_template(
             "showboat_document.html",
-            {"uuid": uuid, "base_url": base_url, "json_url": json_url},
+            {"uuid": uuid, "base_url": base_url, "json_url": json_url, "title": title},
             request=request,
         )
     )

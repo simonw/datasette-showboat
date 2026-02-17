@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Showboat Document{% endblock %}
+{% block title %}Showboat: {{ title or "Document" }}{% endblock %}
 
 {% block extra_head %}
     <script src="{{ base_url }}-/static-plugins/datasette-showboat/marked.min.js"></script>
