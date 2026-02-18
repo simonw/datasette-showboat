@@ -333,7 +333,6 @@ async def test_document_json_polling_after():
 async def test_document_json_with_image():
     datasette = Datasette(memory=True)
     datasette.root_enabled = True
-    import base64
 
     fake_png = b"\x89PNG\r\n\x1a\nfake-png-data"
     await datasette.client.post(
@@ -357,9 +356,98 @@ async def test_document_json_with_image():
     assert chunk["command"] == "image"
     assert chunk["filename"] == "shot.py"
     assert chunk["alt"] == "test"
-    assert "image" in chunk
-    assert base64.b64decode(chunk["image"]) == fake_png
+    # Should have image_url, not inline base64
+    assert "image" not in chunk
+    assert "image_url" in chunk
+    assert f"/image/{chunk['id']}" in chunk["image_url"]
     assert "rendered_markdown" in chunk
+
+
+@pytest.mark.asyncio
+async def test_image_endpoint_serves_png():
+    """Image endpoint should serve image data with correct content type."""
+    datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    fake_png = b"\x89PNG\r\n\x1a\nfake-png-data"
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={
+            "uuid": "doc-1",
+            "command": "image",
+            "filename": "shot.py",
+            "alt": "test",
+        },
+        files={"image": ("test.png", fake_png, "image/png")},
+    )
+
+    # Get the chunk id from the JSON endpoint
+    response = await datasette.client.get(
+        "/-/showboat/doc-1.json",
+        cookies=_root_cookies(datasette),
+    )
+    chunk_id = response.json()["chunks"][0]["id"]
+
+    # Fetch the image directly
+    response = await datasette.client.get(
+        f"/-/showboat/doc-1/image/{chunk_id}",
+        cookies=_root_cookies(datasette),
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content == fake_png
+
+
+@pytest.mark.asyncio
+async def test_image_endpoint_serves_jpeg():
+    """Image endpoint should detect JPEG content type."""
+    datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    fake_jpeg = b"\xff\xd8\xff\xe0fake-jpeg-data"
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={
+            "uuid": "doc-1",
+            "command": "image",
+            "filename": "photo.py",
+            "alt": "photo",
+        },
+        files={"image": ("photo.jpg", fake_jpeg, "image/jpeg")},
+    )
+
+    response = await datasette.client.get(
+        "/-/showboat/doc-1.json",
+        cookies=_root_cookies(datasette),
+    )
+    chunk_id = response.json()["chunks"][0]["id"]
+
+    response = await datasette.client.get(
+        f"/-/showboat/doc-1/image/{chunk_id}",
+        cookies=_root_cookies(datasette),
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.content == fake_jpeg
+
+
+@pytest.mark.asyncio
+async def test_image_endpoint_not_found():
+    """Image endpoint should return 404 for missing images."""
+    datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    await datasette.invoke_startup()
+    response = await datasette.client.get(
+        "/-/showboat/doc-1/image/999",
+        cookies=_root_cookies(datasette),
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_image_endpoint_permission_denied():
+    """Anonymous users should be denied access to the image endpoint."""
+    datasette = Datasette(memory=True)
+    response = await datasette.client.get("/-/showboat/doc-1/image/1")
+    assert response.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -473,6 +561,9 @@ async def test_anonymous_denied_by_default():
     assert response.status_code == 403
 
     response = await datasette.client.get("/-/showboat/abc-123.json")
+    assert response.status_code == 403
+
+    response = await datasette.client.get("/-/showboat/abc-123/image/1")
     assert response.status_code == 403
 
 

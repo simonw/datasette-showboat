@@ -57,15 +57,6 @@
         let lastId = 0;
         const chunksDiv = document.getElementById("chunks");
 
-        function detectImageType(base64Data) {
-            var header = atob(base64Data.substring(0, 16));
-            if (header.startsWith("\x89PNG")) return "image/png";
-            if (header.startsWith("\xFF\xD8\xFF")) return "image/jpeg";
-            if (header.startsWith("GIF8")) return "image/gif";
-            if (header.startsWith("RIFF") && header.substring(8, 12) === "WEBP") return "image/webp";
-            return "image/png";
-        }
-
         function renderChunk(chunk) {
             var div = document.createElement("div");
             div.className = "chunk";
@@ -85,13 +76,11 @@
             var content = document.createElement("div");
             content.className = "chunk-content";
             var md = chunk.rendered_markdown || "";
-            if (chunk.image) {
-                var mimeType = detectImageType(chunk.image);
-                var dataUri = "data:" + mimeType + ";base64," + chunk.image;
+            if (chunk.image_url) {
                 if (md.match(/!\[[^\]]*\]\(\)/)) {
-                    md = md.replace(/!\[([^\]]*)\]\(\)/, "![$1](" + dataUri + ")");
+                    md = md.replace(/!\[([^\]]*)\]\(\)/, "![$1](" + chunk.image_url + ")");
                 } else {
-                    md += "\n\n![image](" + dataUri + ")";
+                    md += "\n\n![image](" + chunk.image_url + ")";
                 }
             }
             content.innerHTML = DOMPurify.sanitize(marked.parse(md));

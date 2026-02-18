@@ -1,6 +1,5 @@
 from datasette import hookimpl, Response
 from datasette.permissions import Action
-import base64
 import datetime
 import secrets
 
@@ -16,6 +15,19 @@ def get_db(datasette):
 def get_token(datasette):
     config = datasette.plugin_config("datasette-showboat") or {}
     return config.get("token")
+
+
+def detect_content_type(data):
+    """Detect image content type from magic bytes."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:4] == b"GIF8":
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return "image/png"
 
 
 def make_fence(content):
@@ -123,6 +135,7 @@ def menu_links(datasette, actor):
 def register_routes():
     return [
         (r"^/-/showboat/receive$", showboat_receive),
+        (r"^/-/showboat/(?P<uuid>[^/]+)/image/(?P<chunk_id>\d+)$", showboat_image),
         (r"^/-/showboat/(?P<uuid>[^/]+)\.json$", showboat_document_json),
         (r"^/-/showboat/(?P<uuid>[^/]+)$", showboat_document),
         (r"^/-/showboat$", showboat_index),
@@ -323,12 +336,33 @@ async def showboat_document_json(request, datasette):
         # Compute markdown for display
         if chunk["command"] != "pop":
             chunk["rendered_markdown"] = render_markdown(chunk)
-        # Base64-encode image blob
+        # Provide image URL instead of inline base64
         if row[11]:
-            chunk["image"] = base64.b64encode(row[11]).decode("ascii")
+            chunk["image_url"] = datasette.urls.path(
+                f"/-/showboat/{uuid}/image/{row[0]}"
+            )
         chunks.append(chunk)
 
     return Response.json({"chunks": chunks})
+
+
+async def showboat_image(request, datasette):
+    await datasette.ensure_permission(action="showboat", actor=request.actor)
+    uuid = request.url_vars["uuid"]
+    chunk_id = int(request.url_vars["chunk_id"])
+    db = get_db(datasette)
+    result = await db.execute(
+        "SELECT image FROM showboat_chunks WHERE id = ? AND showboat_id = ?",
+        [chunk_id, uuid],
+    )
+    if not result.rows or not result.rows[0][0]:
+        return Response.text("Image not found", status=404)
+    image_data = result.rows[0][0]
+    content_type = detect_content_type(image_data)
+    return Response(
+        body=image_data,
+        content_type=content_type,
+    )
 
 
 async def showboat_document(request, datasette):
