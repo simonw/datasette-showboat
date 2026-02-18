@@ -7,6 +7,8 @@
 
 Datasette plugin that provides a remote viewer for [Showboat](https://github.com/simonw/showboat) documents. It receives streaming document chunks over HTTP and displays them in a live-updating web interface.
 
+See [this blog post](https://simonwillison.net/2026/Feb/17/chartroom-and-datasette-showboat/#datasette-showboat) for background on this project.
+
 ## Installation
 
 Install this plugin in the same environment as Datasette.
