@@ -636,3 +636,215 @@ async def test_render_markdown_exec():
     assert "print('hello')" in md
     assert "```output" in md
     assert "hello" in md
+
+
+# --- .md download endpoint tests ---
+
+
+@pytest.mark.asyncio
+async def test_document_markdown_basic():
+    """Basic document with init + note should reconstruct to markdown."""
+    datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    cookies = _root_cookies(datasette)
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "init", "title": "My Demo"},
+    )
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "note", "markdown": "Some **bold** text"},
+    )
+
+    response = await datasette.client.get(
+        "/-/showboat/doc-1.md",
+        cookies=cookies,
+    )
+    assert response.status_code == 200
+    assert "text/markdown" in response.headers["content-type"]
+    text = response.text
+    assert "# My Demo" in text
+    assert "Some **bold** text" in text
+
+
+@pytest.mark.asyncio
+async def test_document_markdown_content_disposition():
+    """Response should have Content-Disposition header for download."""
+    datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    cookies = _root_cookies(datasette)
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "init", "title": "My Demo"},
+    )
+
+    response = await datasette.client.get(
+        "/-/showboat/doc-1.md",
+        cookies=cookies,
+    )
+    assert response.status_code == 200
+    assert "content-disposition" in response.headers
+    assert "doc-1.md" in response.headers["content-disposition"]
+
+
+@pytest.mark.asyncio
+async def test_document_markdown_with_exec():
+    """Exec chunks should render as fenced code blocks with output."""
+    datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    cookies = _root_cookies(datasette)
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "init", "title": "Title"},
+    )
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={
+            "uuid": "doc-1",
+            "command": "exec",
+            "language": "bash",
+            "input": "echo hello",
+            "output": "hello",
+        },
+    )
+
+    response = await datasette.client.get(
+        "/-/showboat/doc-1.md",
+        cookies=cookies,
+    )
+    text = response.text
+    assert "```bash" in text
+    assert "echo hello" in text
+    assert "```output" in text
+    assert "hello" in text
+
+
+@pytest.mark.asyncio
+async def test_document_markdown_with_pop():
+    """Pop commands should remove the preceding non-popped chunk."""
+    datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    cookies = _root_cookies(datasette)
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "init", "title": "Title"},
+    )
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "note", "markdown": "Keep this"},
+    )
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "note", "markdown": "Remove this"},
+    )
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "pop"},
+    )
+
+    response = await datasette.client.get(
+        "/-/showboat/doc-1.md",
+        cookies=cookies,
+    )
+    text = response.text
+    assert "# Title" in text
+    assert "Keep this" in text
+    assert "Remove this" not in text
+
+
+@pytest.mark.asyncio
+async def test_document_markdown_permission_denied():
+    """Anonymous users should be denied access to .md endpoint."""
+    datasette = Datasette(memory=True)
+    response = await datasette.client.get("/-/showboat/doc-1.md")
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_document_markdown_empty():
+    """A UUID with no chunks should return 404."""
+    datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    await datasette.invoke_startup()
+    response = await datasette.client.get(
+        "/-/showboat/nonexistent.md",
+        cookies=_root_cookies(datasette),
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_document_viewer_has_download_link():
+    """Document viewer page should include a link to download the .md file."""
+    datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    response = await datasette.client.get(
+        "/-/showboat/doc-1",
+        cookies=_root_cookies(datasette),
+    )
+    assert response.status_code == 200
+    assert "/-/showboat/doc-1.md" in response.text
+
+
+@pytest.mark.asyncio
+async def test_document_markdown_includes_id_comment():
+    """Reconstructed markdown should include the showboat-id HTML comment and timestamp."""
+    datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    cookies = _root_cookies(datasette)
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "abc-123", "command": "init", "title": "My Demo"},
+    )
+
+    response = await datasette.client.get(
+        "/-/showboat/abc-123.md",
+        cookies=cookies,
+    )
+    text = response.text
+    assert "# My Demo" in text
+    assert "<!-- showboat-id: abc-123 -->" in text
+    # Should have an italicized timestamp line between title and comment
+    lines = text.split("\n")
+    title_idx = next(i for i, l in enumerate(lines) if l == "# My Demo")
+    # Next non-blank line after title should be the dateline
+    dateline_idx = title_idx + 2  # blank line then dateline
+    assert lines[dateline_idx].startswith("*")
+    assert lines[dateline_idx].endswith("*")
+
+
+@pytest.mark.asyncio
+async def test_document_markdown_multiple_pops():
+    """Multiple pops should each remove one chunk."""
+    datasette = Datasette(memory=True)
+    datasette.root_enabled = True
+    cookies = _root_cookies(datasette)
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "init", "title": "Title"},
+    )
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "note", "markdown": "First"},
+    )
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "note", "markdown": "Second"},
+    )
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "pop"},
+    )
+    await datasette.client.post(
+        "/-/showboat/receive",
+        data={"uuid": "doc-1", "command": "pop"},
+    )
+
+    response = await datasette.client.get(
+        "/-/showboat/doc-1.md",
+        cookies=cookies,
+    )
+    text = response.text
+    assert "# Title" in text
+    assert "First" not in text
+    assert "Second" not in text

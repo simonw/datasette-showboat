@@ -6,9 +6,9 @@
     <script src="{{ base_url }}-/static-plugins/datasette-showboat/marked.min.js"></script>
     <script src="{{ base_url }}-/static-plugins/datasette-showboat/purify.min.js"></script>
     <style>
-        .showboat-back,
-        .showboat-back:link,
-        .showboat-back:visited {
+        .showboat-pill,
+        .showboat-pill:link,
+        .showboat-pill:visited {
             display: inline-block;
             margin-top: 0.8em;
             margin-bottom: 1em;
@@ -20,9 +20,9 @@
             text-decoration: none;
             color: #555;
         }
-        .showboat-back:hover,
-        .showboat-back:focus,
-        .showboat-back:active { background: #eaeef2; color: #333; text-decoration: none; }
+        .showboat-pill:hover,
+        .showboat-pill:focus,
+        .showboat-pill:active { background: #eaeef2; color: #333; text-decoration: none; }
         .chunk { margin-bottom: 0.5em; }
         .chunk-timestamp {
             font-size: 0.7em;
@@ -48,7 +48,8 @@
 {% endblock %}
 
 {% block content %}
-    <a href="{{ base_url }}-/showboat" class="showboat-back">&larr; All documents</a>
+    <a href="{{ base_url }}-/showboat" class="showboat-pill">&larr; All documents</a>
+    <a href="{{ md_url }}" class="showboat-pill">Download .md</a>
     <div id="chunks"></div>
     <script>
     (function() {

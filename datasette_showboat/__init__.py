@@ -43,6 +43,35 @@ def make_fence(content):
     return "`" * max(3, max_run + 1)
 
 
+def reconstruct_document(chunks, showboat_id=None):
+    """Reconstruct a showboat markdown document from ordered chunks, applying pop semantics."""
+    # Apply pop semantics: each pop removes the last surviving non-pop chunk
+    surviving = []
+    for chunk in chunks:
+        if chunk["command"] == "pop":
+            if surviving:
+                surviving.pop()
+        else:
+            surviving.append(chunk)
+    # Render each surviving chunk to markdown
+    parts = []
+    for chunk in surviving:
+        if chunk["command"] == "init":
+            title = chunk.get("title") or "Untitled"
+            md = f"# {title}"
+            created_at = chunk.get("created_at")
+            if created_at:
+                md += f"\n\n*{created_at}*"
+            if showboat_id:
+                md += f"\n<!-- showboat-id: {showboat_id} -->"
+            parts.append(md)
+        else:
+            md = render_markdown(chunk)
+            if md:
+                parts.append(md)
+    return "\n\n".join(parts) + "\n" if parts else ""
+
+
 def render_markdown(chunk):
     """Compute markdown from a chunk's raw fields based on its command type."""
     command = chunk["command"]
@@ -72,8 +101,7 @@ def render_markdown(chunk):
 def startup(datasette):
     async def inner():
         db = get_db(datasette)
-        await db.execute_write(
-            """
+        await db.execute_write("""
             CREATE TABLE IF NOT EXISTS showboat_chunks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 showboat_id TEXT NOT NULL,
@@ -88,14 +116,11 @@ def startup(datasette):
                 alt TEXT,
                 image BLOB
             )
-            """
-        )
-        await db.execute_write(
-            """
+            """)
+        await db.execute_write("""
             CREATE INDEX IF NOT EXISTS idx_showboat_chunks_showboat_id
             ON showboat_chunks (showboat_id)
-            """
-        )
+            """)
 
     return inner
 
@@ -136,6 +161,7 @@ def register_routes():
     return [
         (r"^/-/showboat/receive$", showboat_receive),
         (r"^/-/showboat/(?P<uuid>[^/]+)/image/(?P<chunk_id>\d+)$", showboat_image),
+        (r"^/-/showboat/(?P<uuid>[^/]+)\.md$", showboat_document_md),
         (r"^/-/showboat/(?P<uuid>[^/]+)\.json$", showboat_document_json),
         (r"^/-/showboat/(?P<uuid>[^/]+)$", showboat_document),
         (r"^/-/showboat$", showboat_index),
@@ -294,6 +320,43 @@ async def showboat_receive(request, datasette):
 SELECT_COLUMNS = "id, showboat_id, command, created_at, title, markdown, language, input, output, filename, alt, image"
 
 
+async def showboat_document_md(request, datasette):
+    await datasette.ensure_permission(action="showboat", actor=request.actor)
+    uuid = request.url_vars["uuid"]
+    db = get_db(datasette)
+    result = await db.execute(
+        f"SELECT {SELECT_COLUMNS} FROM showboat_chunks WHERE showboat_id = ? ORDER BY id",
+        [uuid],
+    )
+    if not result.rows:
+        return Response.text("Document not found", status=404)
+
+    chunks = []
+    field_names = [
+        "title",
+        "markdown",
+        "language",
+        "input",
+        "output",
+        "filename",
+        "alt",
+    ]
+    for row in result.rows:
+        chunk = {"command": row[2], "created_at": row[3]}
+        for i, name in enumerate(field_names):
+            val = row[4 + i]
+            if val is not None:
+                chunk[name] = val
+        chunks.append(chunk)
+
+    body = reconstruct_document(chunks, showboat_id=uuid)
+    return Response(
+        body=body,
+        content_type="text/markdown; charset=utf-8",
+        headers={"content-disposition": f'attachment; filename="{uuid}.md"'},
+    )
+
+
 async def showboat_document_json(request, datasette):
     await datasette.ensure_permission(action="showboat", actor=request.actor)
     uuid = request.url_vars["uuid"]
@@ -370,10 +433,16 @@ async def showboat_document(request, datasette):
     uuid = request.url_vars["uuid"]
     base_url = datasette.urls.path("/")
     json_url = datasette.urls.path(f"/-/showboat/{uuid}.json")
+    md_url = datasette.urls.path(f"/-/showboat/{uuid}.md")
     return Response.html(
         await datasette.render_template(
             "showboat_document.html",
-            {"uuid": uuid, "base_url": base_url, "json_url": json_url},
+            {
+                "uuid": uuid,
+                "base_url": base_url,
+                "json_url": json_url,
+                "md_url": md_url,
+            },
             request=request,
         )
     )
@@ -382,8 +451,7 @@ async def showboat_document(request, datasette):
 async def showboat_index(request, datasette):
     await datasette.ensure_permission(action="showboat", actor=request.actor)
     db = get_db(datasette)
-    result = await db.execute(
-        """
+    result = await db.execute("""
         SELECT
             showboat_id,
             COUNT(*) as chunk_count,
@@ -396,8 +464,7 @@ async def showboat_index(request, datasette):
         WHERE command != 'pop'
         GROUP BY showboat_id
         ORDER BY MAX(created_at) DESC
-        """
-    )
+        """)
 
     documents = []
     for row in result.rows:
