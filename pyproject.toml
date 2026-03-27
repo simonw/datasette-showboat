@@ -1,6 +1,6 @@
 [project]
 name = "datasette-showboat"
-version = "0.1a1"
+version = "0.1a2"
 description = "Datasette plugin for SHOWBOAT_REMOTE_URL"
 readme = "README.md"
 authors = [{name = "Simon Willison"}]
@@ -39,4 +39,3 @@ datasette_showboat = ["templates/*.html", "static/*.js"]
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
-
