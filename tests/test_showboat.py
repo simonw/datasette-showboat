@@ -494,6 +494,7 @@ async def test_document_viewer_page():
     assert "abc-def-123" in response.text
     assert "marked.min.js" in response.text
     assert "purify.min.js" in response.text
+    assert "mermaid.min.js" in response.text
 
 
 @pytest.mark.asyncio
