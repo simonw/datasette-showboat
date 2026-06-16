@@ -72,19 +72,15 @@
             if (typeof mermaid === "undefined") return;
             var blocks = container.querySelectorAll("pre > code.language-mermaid");
             blocks.forEach(function(code, i) {
-                var src = code.textContent;
-                var target = document.createElement("div");
-                target.className = "mermaid-diagram";
-                code.parentElement.replaceWith(target);
-                mermaid.render("mermaid-" + chunkId + "-" + i, src).then(function(result) {
+                var pre = code.parentElement;
+                mermaid.render("mermaid-" + chunkId + "-" + i, code.textContent).then(function(result) {
+                    var target = document.createElement("div");
+                    target.className = "mermaid-diagram";
                     target.innerHTML = result.svg;
                     if (result.bindFunctions) result.bindFunctions(target);
+                    pre.replaceWith(target);
                 }).catch(function() {
-                    var pre = document.createElement("pre");
-                    var c = document.createElement("code");
-                    c.textContent = src;
-                    pre.appendChild(c);
-                    target.replaceWith(pre);
+                    // Parse failed — leave the original ```mermaid block visible.
                 });
             });
         }
