@@ -30,6 +30,19 @@ export SHOWBOAT_REMOTE_URL="https://your-datasette-instance/-/showboat/receive"
 
 The `/-/showboat` page will display the correct URL for your instance including the hostname.
 
+### Mermaid diagrams
+
+Fenced code blocks tagged `mermaid` are rendered as [Mermaid](https://mermaid.js.org/) diagrams in the document viewer:
+
+````markdown
+```mermaid
+graph TD
+    A[Start] --> B[Finish]
+```
+````
+
+If a diagram fails to parse, its source is shown unchanged so no content is lost.
+
 ### Permissions
 
 Viewing showboat documents requires the `showboat` permission. By default this is **denied** to anonymous users — only the root user (when Datasette is started with `--root`) has access automatically.

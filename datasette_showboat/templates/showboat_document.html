@@ -5,6 +5,7 @@
 {% block extra_head %}
     <script src="{{ base_url }}-/static-plugins/datasette-showboat/marked.min.js"></script>
     <script src="{{ base_url }}-/static-plugins/datasette-showboat/purify.min.js"></script>
+    <script src="{{ base_url }}-/static-plugins/datasette-showboat/mermaid.min.js"></script>
     <style>
         .showboat-pill,
         .showboat-pill:link,
@@ -44,6 +45,8 @@
             color: #666;
             font-style: italic;
         }
+        .mermaid-diagram { margin: 0.5em 0; }
+        .mermaid-diagram svg { max-width: 100%; height: auto; }
     </style>
 {% endblock %}
 
@@ -57,6 +60,34 @@
         const jsonUrl = {{ json_url|tojson }};
         let lastId = 0;
         const chunksDiv = document.getElementById("chunks");
+
+        if (typeof mermaid !== "undefined") {
+            mermaid.initialize({ startOnLoad: false });
+        }
+
+        // Replace ```mermaid code blocks with rendered SVG diagrams. Mermaid runs
+        // after DOMPurify so its generated SVG isn't stripped; on a parse error we
+        // leave the original source visible rather than losing content.
+        function renderMermaidDiagrams(container, chunkId) {
+            if (typeof mermaid === "undefined") return;
+            var blocks = container.querySelectorAll("pre > code.language-mermaid");
+            blocks.forEach(function(code, i) {
+                var src = code.textContent;
+                var target = document.createElement("div");
+                target.className = "mermaid-diagram";
+                code.parentElement.replaceWith(target);
+                mermaid.render("mermaid-" + chunkId + "-" + i, src).then(function(result) {
+                    target.innerHTML = result.svg;
+                    if (result.bindFunctions) result.bindFunctions(target);
+                }).catch(function() {
+                    var pre = document.createElement("pre");
+                    var c = document.createElement("code");
+                    c.textContent = src;
+                    pre.appendChild(c);
+                    target.replaceWith(pre);
+                });
+            });
+        }
 
         function renderChunk(chunk) {
             var div = document.createElement("div");
@@ -94,6 +125,7 @@
             div.appendChild(content);
             div.appendChild(ts);
             chunksDiv.appendChild(div);
+            renderMermaidDiagrams(content, chunk.id);
         }
 
         async function poll() {
